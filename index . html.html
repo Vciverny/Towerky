@@ -1,0 +1,229 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medieval Tower Defense</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #add8e6;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        .game-ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #000;
+            font-size: 18px;
+            z-index: 1000;
+        }
+        .game-ui button {
+            padding: 10px;
+            background-color: #8b0000;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-ui">
+        <div>Coins: <span id="coins">100</span></div>
+        <div>Lives: <span id="lives">10</span></div>
+        <button onclick="restartGame()">Restart</button>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Game Variables
+        let coins = 100;
+        let lives = 10;
+        let towers = [];
+        let enemies = [];
+        let projectiles = [];
+        let wave = 0;
+        let gameActive = true;
+
+        // Tower Definitions
+        const towerTypes = {
+            archer: { cost: 50, range: 100, rate: 20, damage: 10, color: "green" },
+            mage: { cost: 70, range: 120, rate: 40, damage: 15, color: "purple" },
+            ballista: { cost: 100, range: 200, rate: 60, damage: 30, color: "brown" }
+        };
+
+        // Enemy Definitions
+        class Enemy {
+            constructor(x, y, speed, health) {
+                this.x = x;
+                this.y = y;
+                this.speed = speed;
+                this.health = health;
+                this.width = 30;
+                this.height = 30;
+            }
+            draw() {
+                ctx.fillStyle = "red";
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+            update() {
+                this.x -= this.speed;
+            }
+        }
+
+        // Tower Class
+        class Tower {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.range = type.range;
+                this.rate = type.rate;
+                this.damage = type.damage;
+                this.color = type.color;
+                this.cooldown = 0;
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 20, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            update() {
+                if (this.cooldown > 0) this.cooldown--;
+                enemies.forEach((enemy) => {
+                    const dist = Math.hypot(enemy.x - this.x, enemy.y - this.y);
+                    if (dist < this.range && this.cooldown === 0) {
+                        this.shoot(enemy);
+                        this.cooldown = this.rate;
+                    }
+                });
+            }
+            shoot(enemy) {
+                projectiles.push(new Projectile(this.x, this.y, enemy, this.damage));
+            }
+        }
+
+        // Projectile Class
+        class Projectile {
+            constructor(x, y, target, damage) {
+                this.x = x;
+                this.y = y;
+                this.target = target;
+                this.damage = damage;
+                this.speed = 5;
+            }
+            draw() {
+                ctx.fillStyle = "black";
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            update() {
+                const angle = Math.atan2(this.target.y - this.y, this.target.x - this.x);
+                this.x += Math.cos(angle) * this.speed;
+                this.y += Math.sin(angle) * this.speed;
+
+                // Check collision with enemy
+                if (Math.hypot(this.target.x - this.x, this.target.y - this.y) < 5) {
+                    this.target.health -= this.damage;
+                    if (this.target.health <= 0) {
+                        const index = enemies.indexOf(this.target);
+                        if (index > -1) enemies.splice(index, 1);
+                        coins += 10;
+                    }
+                    projectiles.splice(projectiles.indexOf(this), 1);
+                }
+            }
+        }
+
+        // Spawn Enemies
+        function spawnEnemies() {
+            for (let i = 0; i < wave * 5; i++) {
+                enemies.push(new Enemy(canvas.width, Math.random() * canvas.height, 1, 20 + wave * 10));
+            }
+        }
+
+        // Handle Input
+        canvas.addEventListener("click", (e) => {
+            if (!gameActive) return;
+            const x = e.clientX;
+            const y = e.clientY;
+            if (coins >= towerTypes.archer.cost) {
+                towers.push(new Tower(x, y, towerTypes.archer));
+                coins -= towerTypes.archer.cost;
+            }
+        });
+
+        // Restart Game
+        function restartGame() {
+            coins = 100;
+            lives = 10;
+            towers = [];
+            enemies = [];
+            projectiles = [];
+            wave = 0;
+            gameActive = true;
+        }
+
+        // Game Loop
+        function gameLoop() {
+            if (!gameActive) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw and update towers
+            towers.forEach((tower) => {
+                tower.draw();
+                tower.update();
+            });
+
+            // Draw and update enemies
+            enemies.forEach((enemy, index) => {
+                enemy.draw();
+                enemy.update();
+                if (enemy.x < 0) {
+                    lives--;
+                    enemies.splice(index, 1);
+                    if (lives <= 0) {
+                        gameActive = false;
+                        alert("Game Over! Press Restart to try again.");
+                    }
+                }
+            });
+
+            // Draw and update projectiles
+            projectiles.forEach((projectile) => {
+                projectile.draw();
+                projectile.update();
+            });
+
+            // Update UI
+            document.getElementById("coins").innerText = coins;
+            document.getElementById("lives").innerText = lives;
+
+            // Check for next wave
+            if (enemies.length === 0) {
+                wave++;
+                spawnEnemies();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start Game
+        spawnEnemies();
+        gameLoop();
+    </script>
+</body>
+</html>
